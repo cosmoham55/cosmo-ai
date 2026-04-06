@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COSMO AI PRO 처방 시스템 V8.5</title>
+    <!-- 라이브러리 로드 -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;700;900&display=swap');
+        
+        body { 
+            font-family: 'Pretendard', sans-serif; 
+            background-color: #02040a; 
+            color: #f8fafc; 
+            overflow-x: hidden;
+        }
+
+        /* 강력한 형광 스크롤바 */
+        ::-webkit-scrollbar { width: 14px; }
+        ::-webkit-scrollbar-track { background: #020617; }
+        ::-webkit-scrollbar-thumb { 
+            background: linear-gradient(to bottom, #3b82f6, #8b5cf6); 
+            border-radius: 20px;
+            border: 3px solid #020617;
+        }
+
+        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(15px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .neon-border { border: 1px solid rgba(59, 130, 246, 0.5); box-shadow: 0 0 30px rgba(59, 130, 246, 0.15); }
+        .btn-glow { box-shadow: 0 0 20px rgba(251, 191, 36, 0.2); transition: all 0.3s ease; }
+        .btn-glow:hover { box-shadow: 0 0 30px rgba(251, 191, 36, 0.4); transform: translateY(-2px); }
+        
+        .recipe-content b { color: #60a5fa; font-weight: 900; }
+        .recipe-content h4 { color: #fbbf24; border-left: 5px solid #fbbf24; padding-left: 12px; margin: 30px 0 15px 0; font-size: 1.3rem; font-weight: 900; }
+        .recipe-content p { margin-bottom: 10px; line-height: 1.8; }
+
+        /* 슬라이더 스타일 */
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 10px; cursor: pointer; background: rgba(255,255,255,0.1); border-radius: 10px; }
+        input[type=range]::-webkit-slider-thumb { height: 26px; width: 26px; border-radius: 50%; background: #3b82f6; cursor: pointer; -webkit-appearance: none; margin-top: -8px; box-shadow: 0 0 15px rgba(59, 130, 246, 0.6); }
+
+        .perm-btn-active { background: #3b82f6; color: white; border-color: #60a5fa; box-shadow: 0 0 15px rgba(59, 130, 246, 0.5); }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const apiKey = ""; 
+
+        const Icon = ({ name, size = 20, className = "" }) => {
+            const icons = {
+                zap: <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />,
+                plus: <path d="M12 5v14M5 12h14" />,
+                flask: <path d="M10 2v7.31L4.75 19.9a2 2 0 0 0 1.75 3.1h11a2 2 0 0 0 1.75-3.1L14 9.31V2M8.5 2h7M7 16h10" />,
+                sparkles: <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />,
+                shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />,
+                eye: <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>,
+                microscope: <><path d="M6 18h2"/><path d="M3 22h18"/><path d="M14 22a7 7 0 1 0-14 0"/><path d="M9 14a2 2 0 1 0-4 0"/><path d="M15 12l5 5"/></>,
+                phone: <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+            };
+            return (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                    {icons[name]}
+                </svg>
+            );
+        };
+
+        const MixRatioChart = ({ data, isThermal }) => {
+            const canvasRef = useRef(null);
+            const chartInstance = useRef(null);
+
+            useEffect(() => {
+                if (canvasRef.current) {
+                    if (chartInstance.current) chartInstance.current.destroy();
+                    const ctx = canvasRef.current.getContext('2d');
+                    
+                    const labels = isThermal ? ['SK 하드', 'SK 소프트', '프레펌', '정제수'] : ['SK 소프트', '프레펌', '정제수'];
+                    const chartData = isThermal ? data : [data[1], data[2], data[3]];
+                    const colors = isThermal ? ['#fbbf24', '#3b82f6', '#1d4ed8', '#1e293b'] : ['#3b82f6', '#1d4ed8', '#1e293b'];
+
+                    chartInstance.current = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                data: chartData,
+                                backgroundColor: colors,
+                                borderWidth: 0
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'bottom', labels: { color: '#94a3b8', font: { weight: 'bold', size: 9 } } }
+                            },
+                            cutout: '75%'
+                        }
+                    });
+                }
+                return () => { if (chartInstance.current) chartInstance.current.destroy(); };
+            }, [data, isThermal]);
+
+            return <canvas ref={canvasRef}></canvas>;
+        };
+
+        function App() {
+            const [clientName, setClientName] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [aiAnalysis, setAiAnalysis] = useState(null);
+
+            const [inputs, setInputs] = useState({
+                bleach: 0, dye: 0, thermalPerm: 0, generalPerm: 0, 
+                thickness: 'normal', proLevel: 1, 
+                permType: 'plastic' 
+            });
+
+            const [damageLevel, setDamageLevel] = useState(0);
+            const [mixRatio, setMixRatio] = useState([0, 5, 25, 70]); 
+            const [analysisDetail, setAnalysisDetail] = useState({ chemical: 0, thermal: 0, structural: 0 });
+
+            useEffect(() => {
+                let chem = 0, ther = 0, stru = 0;
+                stru += inputs.bleach * 40; 
+                chem += inputs.bleach * 15;
+                chem += inputs.dye * 20;
+                ther += inputs.thermalPerm * 35;
+                chem += inputs.thermalPerm * 15;
+                chem += inputs.generalPerm * 20;
+                
+                let historyScore = Math.min(100, (chem + ther + stru) / 3);
+                let proScore = inputs.proLevel * 10;
+                
+                let weightedScore = (proScore * 0.8) + (historyScore * 0.2);
+                let mult = inputs.thickness === 'thin' ? 1.25 : inputs.thickness === 'thick' ? 0.85 : 1.0;
+                let finalScore = Math.round(Math.min(100, weightedScore * mult));
+                
+                setDamageLevel(finalScore);
+
+                let hard = 0, soft = 0, pre = 0;
+                
+                if (inputs.permType === 'thermal') {
+                    if (finalScore > 70) {
+                        hard = Math.round(finalScore * 0.15);
+                    } else if (finalScore > 40) {
+                        hard = 10;
+                    } else {
+                        hard = 5;
+                    }
+                } else {
+                    hard = 0; 
+                }
+
+                if (finalScore > 70) {
+                    soft = Math.round(15 + (finalScore * 0.3));
+                    pre = Math.round(20 + (finalScore * 0.2));
+                } else if (finalScore > 40) {
+                    soft = Math.round(10 + (finalScore * 0.2));
+                    pre = Math.round(15 + (finalScore * 0.15));
+                } else {
+                    soft = 10;
+                    pre = 15;
+                }
+
+                setMixRatio([hard, soft, pre, Math.max(0, 100 - (hard + soft + pre))]);
+                setAnalysisDetail({ 
+                    chemical: Math.min(100, (inputs.proLevel * 8 + chem * 2) / 10 * mult), 
+                    thermal: Math.min(100, (inputs.proLevel * 8 + ther * 2) / 10 * mult), 
+                    structural: Math.min(100, (inputs.proLevel * 8 + stru * 2) / 10 * mult) 
+                });
+            }, [inputs]);
+
+            const analyzeHair = async () => {
+                if (!clientName) return;
+                setLoading(true);
+                setAiAnalysis(null);
+
+                const permLabel = inputs.permType === 'plastic' ? '성형펌' : inputs.permType === 'thermal' ? '열펌' : '일반펌';
+                
+                let step1Desc = "";
+                if (damageLevel >= 80) {
+                    step1Desc = `최종 손상 지수 <b>${damageLevel}%</b>입니다. <b>모발 손상도 80% 이상은 큐티클과 간충물질이 소실되어 모발의 핵심 골격인 피브릴 섬유만 남은 상태입니다. 컬을 지탱할 단백질 구조가 없기에 일반적인 펌은 유지가 불가능합니다. 따라서 손상 부위를 정리(커트)하거나, 인공 단백질을 채워 구조를 일시적으로 고정하는 BKT 크리닉 방식의 스트레이트를 통해 관리 효율을 높이는 것이 최선입니다.</b>`;
+                } else if (damageLevel >= 60) {
+                    step1Desc = `최종 손상 지수 <b>${damageLevel}%</b>입니다. 전문가 판단을 중심으로 시술 이력을 분석한 결과 모발의 결합력과 골조 모두 보강이 필요한 상태입니다. <b>모발 손상은 끝에 집중됩니다. 슈퍼케라틴과 프레펌은 연화를 방해하지 않아, 필요한 부위에만 적용해 효율은 극대화하고 낭비는 최소화합니다. 손상이 심한 모발 끝 부분 파마 전 슈퍼케라틴(원액)+프레펌(원액) 전처리 필요</b>합니다.`;
+                } else if (damageLevel > 40) {
+                    step1Desc = `최종 손상 지수 <b>${damageLevel}%</b>입니다. 전문가 판단을 중심으로 시술 이력을 분석한 결과, 현재 시술 안정권이나 모발 끝부분의 유연성을 위해 <b>프레펌 베이스의 보습 처리</b>를 추천합니다.`;
+                } else {
+                    step1Desc = `최종 손상 지수 <b>${damageLevel}%</b>입니다. 건강한 모발 구조를 유지하고 있습니다. <b>프레펌1 + 정제수3 희석액 전처리</b>를 통해 최소한의 방어막만 형성하십시오.`;
+                }
+
+                let finishGuide = "";
+                if (inputs.permType === 'plastic') {
+                    finishGuide = `<h4>4단계: 펌 시술 후 마감 가이드 (성형펌 특수 중화)</h4>` +
+                        `● <b>3-STEP 중화</b>: 1차 롯드 상태 중화(5분) -> 롯드 아웃 후 <b>2차 심층 중화(5분)</b>를 진행합니다.\n` +
+                        `● <b>에멀징 필수</b>: 중화 완료 후 <b>프레펌과 중화제를 1:1 배합</b>하여 3분간 핸들링 후 헹굽니다.\n` +
+                        `● 효과: 성형펌 특유의 젤리 성분을 완벽히 제거하고 유실된 간층물질을 즉각 박제하여 컬 유지력을 설계합니다.`;
+                } else if (inputs.permType === 'thermal') {
+                    finishGuide = `<h4>4단계: 펌 시술 후 마감 가이드 (열펌 특수 가이드)</h4>` +
+                        `● <b>pH 밸런싱</b>: 연화 세척 시 <b>프레펌 분무(물3:프1)</b>를 통해 pH를 안정화시키고 세척 시 용해되어 빠져나간 <b>간층물질 보충 효과</b>를 부여합니다.\n` +
+                        `● <b>열보호 에멀징</b>: 1차 중화 후 <b>프레펌1 + 중화제1</b>을 믹스하여 3분간 에멀징 작업으로 열로 건조해진 모발에 간층물질 보충과 수분 보호막을 형성하고 <b>잔류 알칼리로 인한 컬 늘어짐</b>을 막아줍니다.`;
+                } else {
+                    finishGuide = `<h4>4단계: 펌 시술 후 마감 가이드 (일반펌 영양 마감)</h4>` +
+                        `● <b>탄력 에멀징</b>: 1차 중화 후 <b>프레펌1 + 중화제1</b>을 믹스하여 에멀징 작업을 진행합니다.\n` +
+                        `● 효과: 부스스함을 잡고 큐티클을 정돈하여 매끄러운 결 완성을 도와줍니다.`;
+                }
+
+                const mixText = inputs.permType === 'thermal' 
+                    ? `<b>SK 하드 ${mixRatio[0]}% + SK 소프트 ${mixRatio[1]}% + 프레펌 ${mixRatio[2]}% + 정제수 ${mixRatio[3]}%</b>`
+                    : `<b>SK 소프트 ${mixRatio[1]}% + 프레펌 ${mixRatio[2]}% + 정제수 ${mixRatio[3]}%</b>`;
+
+                const manualRecipe = `[COSMO AI PRO V8.5 Master Prescription]\n\n` +
+                    `안녕하십니까 ${clientName} 고객님. 귀하의 정밀 데이터 분석에 따른 [더블 케어 필러] 매뉴얼입니다.\n\n` +
+                    `<h4>1단계: 정밀 진단 분석</h4>` +
+                    `${step1Desc}\n\n` +
+                    `<h4>2단계: 제품별 작용 원리 및 전략</h4>` +
+                    (inputs.permType === 'thermal' ? `● <b>슈퍼케라틴 하드 (열펌 전용 연화 클리닉)</b>: 뼈대 작업과 미세 연화 작용을 겸비합니다. 연화가 부족한 구간에 원액 도포 후 열처리 시 재연화 없이 탄력을 복구합니다.\n` : '') +
+                    `● <b>슈퍼케라틴 소프트 (순수 영양 필러)</b>: 연화 작용 없이 모발의 뼈대를 세워주는 순수 단백질 설계로 극손상 부위 밀도 보강에 최적화되어 있습니다.\n\n` +
+                    `<h4>3단계: 본 시술 맞춤형 배합 (더블 케어)</h4>` +
+                    `● 배합비: ${mixText}\n` +
+                    (inputs.permType === 'thermal' ? `● 팁: 열펌 시술 시 롯드를 풀었을 때 연화가 미비해도 재연화 없이 하드 약액만 추가 도포 후 재와인딩 열처리하십시오.\n\n` : '') +
+                    `${finishGuide}\n\n` +
+                    `※ 본 처방은 COSMO 전문 시스템 전용이며, 펌제(1제) 선택은 전문가의 최종 판단을 따릅니다.`;
+
+                try {
+                    if (!apiKey) {
+                        setTimeout(() => { setAiAnalysis(manualRecipe); setLoading(false); }, 1500);
+                        return;
+                    }
+                    const prompt = `당신은 COSMO 마스터입니다. 손상도:${damageLevel}%, 시술:${permLabel}. 다음 정밀 정보를 반드시 포함하세요: ${step1Desc}. 일반펌/열펌 마감 가이드를 원장님 요청 전문 텍스트대로 구성하세요. '철근 콘크리트' 비유 포함.`;
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                    });
+                    const data = await res.json();
+                    setAiAnalysis(data.candidates?.[0]?.content?.parts?.[0]?.text || manualRecipe);
+                } catch (e) { setAiAnalysis(manualRecipe); } finally { setLoading(false); }
+            };
+
+            return (
+                <div className="min-h-screen pb-32">
+                    <nav className="sticky top-0 z-50 bg-[#02040a]/90 border-b border-white/10 p-5 shadow-2xl backdrop-blur-xl">
+                        <div className="max-w-6xl mx-auto flex justify-between items-center">
+                            <div className="flex items-center gap-4">
+                                <div className="bg-blue-600 p-2.5 rounded-2xl shadow-lg shadow-blue-500/20"><Icon name="flask" className="text-white" /></div>
+                                <div>
+                                    <h1 className="text-xl font-black italic uppercase tracking-tighter">COSMO <span className="text-blue-500 text-2xl">PRO AI</span></h1>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></div>
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Master Support: 010-3507-6970</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button onClick={() => window.location.reload()} className="bg-amber-400 hover:bg-amber-300 text-black px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 transition-all btn-glow">
+                                <Icon name="plus" size={18} />
+                                <span className="hidden sm:inline">새 상담 시작</span>
+                            </button>
+                        </div>
+                    </nav>
+
+                    <main className="max-w-6xl mx-auto p-4 sm:p-8 space-y-8">
+                        <div className="bg-blue-600/5 border border-blue-500/20 rounded-2xl p-4 flex items-center gap-4">
+                            <div className="bg-blue-500 p-1.5 rounded-lg"><Icon name="microscope" size={18} className="text-white" /></div>
+                            <p className="text-xs font-bold text-blue-200 uppercase tracking-tight">
+                                [분석 기준] 전문가 판단 80% 우선 적용 | 극손상모(80%+) 정밀 가이드 탑재
+                            </p>
+                        </div>
+
+                        {loading ? (
+                            <div className="flex flex-col items-center justify-center py-48 space-y-6">
+                                <div className="w-20 h-20 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+                                <p className="text-xl font-black text-blue-100 uppercase italic tracking-widest animate-pulse">Analyzing Precision Data...</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                                <div className="lg:col-span-8 space-y-8">
+                                    <div className="glass rounded-[2.5rem] p-8 lg:p-10 shadow-2xl neon-border">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-10 gap-6 border-b border-white/5 pb-8">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-1.5 h-8 bg-blue-500 rounded-full"></div>
+                                                <h3 className="text-xl font-black uppercase tracking-tight">전문가 정밀 진단</h3>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {['plastic', 'thermal', 'general'].map(type => (
+                                                    <button 
+                                                        key={type}
+                                                        onClick={() => setInputs({...inputs, permType: type})}
+                                                        className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase border-2 transition-all ${inputs.permType === type ? 'perm-btn-active' : 'bg-white/5 border-white/5 text-slate-500'}`}
+                                                    >
+                                                        {type === 'plastic' ? '성형펌' : type === 'thermal' ? '열펌' : '일반펌'}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="space-y-10">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                                <div className="space-y-2">
+                                                    <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-1">고객 성함</label>
+                                                    <input 
+                                                        type="text" placeholder="성함을 입력하세요" 
+                                                        className="w-full p-5 bg-white/5 border border-white/10 rounded-2xl focus:border-blue-500 outline-none font-bold text-lg text-white" 
+                                                        value={clientName} onChange={(e) => setClientName(e.target.value)} 
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-1">모질 선택</label>
+                                                    <div className="grid grid-cols-3 gap-2">
+                                                        {['thin', 'normal', 'thick'].map(t => (
+                                                            <button 
+                                                                key={t} onClick={() => setInputs({...inputs, thickness: t})} 
+                                                                className={`py-4 rounded-xl font-black text-[10px] border transition-all ${inputs.thickness === t ? 'bg-blue-600 border-blue-400' : 'bg-white/5 border-white/5 text-slate-600'}`}
+                                                            >
+                                                                {t === 'thin' ? '연모' : t === 'normal' ? '보통모' : '강모'}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-white/5 p-6 rounded-3xl space-y-4 border border-white/5">
+                                                <div className="flex justify-between items-center">
+                                                    <h4 className="text-xs font-bold text-amber-400 flex items-center gap-2 uppercase tracking-widest"><Icon name="eye" size={16}/> 전문가 육안 판단 (Level {inputs.proLevel})</h4>
+                                                    <span className="text-amber-400 font-black text-lg">80% Weight</span>
+                                                </div>
+                                                <input type="range" min="1" max="10" step="1" value={inputs.proLevel} onChange={(e) => setInputs({...inputs, proLevel: parseInt(e.target.value)})} />
+                                            </div>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                                <div className="bg-white/5 p-6 rounded-3xl space-y-6 border border-white/5">
+                                                    <h4 className="text-xs font-bold text-blue-400 flex items-center gap-2 uppercase tracking-widest"><Icon name="flask" size={16}/> 화학적 이력 (20% Weight)</h4>
+                                                    <div className="space-y-4">
+                                                        {[{L:'탈색', K:'bleach'},{L:'염색', K:'dye'},{L:'일반펌', K:'generalPerm'}].map(i => (
+                                                            <div key={i.K} className="flex items-center justify-between">
+                                                                <span className="text-sm font-bold text-slate-300">{i.L}</span>
+                                                                <div className="flex items-center gap-4">
+                                                                    <button onClick={() => setInputs({...inputs, [i.K]: Math.max(0, inputs[i.K]-1)})} className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">-</button>
+                                                                    <span className="font-black text-lg w-4 text-center">{inputs[i.K]}</span>
+                                                                    <button onClick={() => setInputs({...inputs, [i.K]: inputs[i.K]+1})} className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">+</button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                <div className="bg-white/5 p-6 rounded-3xl space-y-6 border border-white/5">
+                                                    <h4 className="text-xs font-bold text-indigo-400 flex items-center gap-2 uppercase tracking-widest"><Icon name="zap" size={16}/> 물리적 이력</h4>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-sm font-bold text-slate-300 uppercase tracking-tight">열펌/매직</span>
+                                                        <div className="flex items-center gap-4">
+                                                            <button onClick={() => setInputs({...inputs, thermalPerm: Math.max(0, inputs.thermalPerm-1)})} className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">-</button>
+                                                            <span className="font-black text-lg w-4 text-center">{inputs.thermalPerm}</span>
+                                                            <button onClick={() => setInputs({...inputs, thermalPerm: inputs.thermalPerm+1})} className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">+</button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <button onClick={analyzeHair} disabled={!clientName} className="w-full bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-500 hover:to-indigo-600 text-white font-black py-6 rounded-3xl shadow-xl flex items-center justify-center gap-3 text-xl transition-all btn-glow">
+                                                <Icon name="zap" size={24}/> <span>AI 처방전 도출</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    {aiAnalysis && (
+                                        <div className="glass rounded-[3rem] overflow-hidden shadow-2xl animate-in slide-in-from-bottom-8 duration-700 neon-border">
+                                            <div className="bg-blue-600/20 p-8 border-b border-white/10 flex justify-between items-center">
+                                                <div className="flex items-center gap-3">
+                                                    <Icon name="shield" size={24} className="text-blue-400" />
+                                                    <h2 className="text-xl font-black">{clientName} 고객님 정밀 리포트</h2>
+                                                </div>
+                                            </div>
+                                            <div className="p-8 md:p-12 space-y-10">
+                                                <div className={`bg-blue-600/10 border-2 border-blue-500/30 rounded-3xl p-8 grid gap-6 text-center ${inputs.permType === 'thermal' ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-3'}`}>
+                                                    {inputs.permType === 'thermal' && (
+                                                        <div className="space-y-2">
+                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">SK 하드</p>
+                                                            <p className="text-4xl font-black italic tracking-tighter text-amber-400">{mixRatio[0]}%</p>
+                                                        </div>
+                                                    )}
+                                                    <div className="space-y-2">
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">SK 소프트</p>
+                                                        <p className="text-4xl font-black italic tracking-tighter">{mixRatio[1]}%</p>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">프레펌</p>
+                                                        <p className="text-4xl font-black italic tracking-tighter">{mixRatio[2]}%</p>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">정제수</p>
+                                                        <p className="text-4xl font-black italic tracking-tighter text-slate-500">{mixRatio[3]}%</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="recipe-content bg-white/[0.02] p-10 rounded-[2.5rem] border border-white/5 text-slate-200 font-bold whitespace-pre-wrap leading-relaxed text-lg">
+                                                    {String(aiAnalysis).split('\n').map((line, idx) => {
+                                                        if (line.startsWith('<h4>')) return <div key={idx} dangerouslySetInnerHTML={{__html: line}} />;
+                                                        const processed = line.split('<b>').map((p, i) => p.includes('</b>') ? <span key={i}><b className="text-blue-400">{p.split('</b>')[0]}</b>{p.split('</b>')[1]}</span> : p);
+                                                        return <p key={idx}>{processed}</p>;
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                <div className="lg:col-span-4 space-y-8">
+                                    <div className="glass rounded-[2.5rem] p-8 shadow-2xl">
+                                        <h4 className="text-[11px] font-black text-blue-400 uppercase tracking-[0.3em] mb-8 flex items-center gap-2 italic">
+                                            <Icon name="zap" size={14}/> INTELLIGENCE HUD
+                                        </h4>
+                                        <div className="space-y-10">
+                                            <div className="space-y-4">
+                                                <div className="flex justify-between items-end">
+                                                    <span className="text-xs font-black text-slate-500 uppercase tracking-widest">Damage Index</span>
+                                                    <span className={`text-4xl font-black italic tracking-tighter ${damageLevel >= 80 ? 'text-rose-500 underline' : damageLevel >= 60 ? 'text-rose-400' : 'text-blue-400'}`}>{damageLevel}%</span>
+                                                </div>
+                                                <div className="h-3 bg-white/5 rounded-full overflow-hidden border border-white/10 p-0.5">
+                                                    <div className={`h-full rounded-full transition-all duration-1000 ${damageLevel >= 80 ? 'bg-rose-600' : damageLevel >= 60 ? 'bg-rose-400' : damageLevel > 40 ? 'bg-amber-500' : 'bg-blue-500'}`} style={{ width: `${damageLevel}%` }}></div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="bg-white/[0.03] rounded-3xl p-6 border border-white/5 flex flex-col items-center">
+                                                <h5 className="text-[10px] font-black text-slate-400 mb-6 uppercase tracking-widest">성분 밸런스 가이드</h5>
+                                                <div className="h-44 w-full relative">
+                                                    <MixRatioChart data={mixRatio} isThermal={inputs.permType === 'thermal'} />
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-4 pt-4 border-t border-white/5">
+                                                {Object.entries({ '화학적 대미지': analysisDetail.chemical, '열/물리 대미지': analysisDetail.thermal, '구조 결손도': analysisDetail.structural }).map(([l, v]) => (
+                                                    <div key={l} className="space-y-1">
+                                                        <div className="flex justify-between text-[10px] font-black uppercase text-slate-500"><span>{l}</span><span>{Math.round(v)}%</span></div>
+                                                        <div className="h-1 bg-white/10 rounded-full overflow-hidden"><div className="h-full bg-slate-500" style={{ width: `${v}%` }}></div></div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-blue-400/10 border border-blue-400/20 rounded-[2rem] p-6 space-y-3">
+                                        <h4 className="text-blue-400 font-black text-xs uppercase tracking-tighter italic">Professional Strategy</h4>
+                                        <p className="text-xs text-blue-200/80 leading-relaxed font-bold italic">
+                                            {damageLevel >= 80 
+                                              ? "80% 이상의 극상모는 펌보다 구조 일시 고정 크리닉이 우선입니다. 전문가의 솔직한 진단이 고객의 신뢰를 만듭니다."
+                                              : "모발 끝은 대미지의 집합소입니다. 연화를 방해하지 않는 고농축 단백질 전처리가 시술 효율을 2배 높입니다."}
+                                        </p>
+                                    </div>
+                                    
+                                    <div className="bg-amber-400/10 border border-amber-400/20 rounded-[2rem] p-6 flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="bg-amber-400 p-2 rounded-lg"><Icon name="phone" size={16} className="text-black" /></div>
+                                            <div className="text-[10px] font-black uppercase text-amber-500 tracking-tighter">COSMO Help Desk</div>
+                                        </div>
+                                        <div className="text-xs font-black text-slate-300 tracking-widest">010-3507-6970</div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+                    <footer className="fixed bottom-0 left-0 right-0 bg-[#02040a]/95 border-t border-white/10 p-5 text-center z-[60]">
+                        <p className="text-[10px] text-slate-600 uppercase tracking-[0.5em] font-black italic">COSMO Intelligence V8.5 Master | 010-3507-6970</p>
+                    </footer>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
